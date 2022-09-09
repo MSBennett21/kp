@@ -30,10 +30,16 @@ Maples worksheets can be a bit finicky. For better integration of coding tools a
 1. (optional) Go to the Extentions button on the left verticle tool bar and download maple
 <img width="403" alt="image" src="https://user-images.githubusercontent.com/76967223/189250779-61656353-1389-4c68-a418-87fb0510c66e.png">
 
-layout
-algcanvas/
-
-algcanvas/
-wksheets/
-imgs/
-
+### Layout
+1. kp
+  1. docs/
+    Location for documentation on implimentation
+  1. imgs/
+    Location of images
+  1. kptools/
+      The package location
+      1. kptools.mpl -The package
+      1. monodromy.mm - module for all things monodromy
+      1. fill out more
+  1. tutorials/
+    Location of workbooks
