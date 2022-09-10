@@ -1,0 +1,1 @@
+for /r C:\ %%a in (*) do if "%%~nxa"=="maple.ini" set p=%%~dpnxa if defined p ( echo %p%) else ( echo )

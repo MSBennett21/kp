@@ -5,18 +5,13 @@
 ##Macros
 $define EXTRA1 3
 $define EXTRA2 2
-$define CLOSE 4
-$define CLOSE2 20
-$define Increase_Digits  1/16
-$define	Initial_tstep  1/8
-$define TRY_CCQUAD  11 # higher accuracy in Int than this -> use _CCquad
-$define	ERR1  `Newton method failed, using more Digits...`
+$define DEFAULT_GLOBAL_LVL 12 #see david baily paper
+$define DEFAULT_BASE_LVL 1
 $define mindist ComputationalGeometry[ClosestPointPair] 
 $define voronoiDual ComputationalGeometry[DelaunayTriangulation]
 $define searchList ListTools[Search]
 $define reverseList ListTools[Reverse]
-$define removeReduancy ListTools[MakeUnique]
-$define cross LinearAlgebra[CrossProduct]
+$define mkUnique ListTools[MakeUnique]
 $define Id LinearAlgebra[IdentityMatrix]
 $define zero LinearAlgebra[ZeroMatrix]
 $define prod LinearAlgebra[Multiply]
@@ -40,33 +35,62 @@ $define eq LinearAlgebra[Equal]
 $define	perms combinat[permute]
 $define	getSubObjects combinat[choose]
 $define mcoef combinat[multinomial]
+$define input combinat[multinomial]
+$define polySolve SolveTools[Polynomial]
+$define polySysSolve SolveTools[PolynomialSystem]
+$define getGenus algcurves[genus]
+$define pProd GroupTheory[PermProduct]
+$define pInv GroupTheory[PermInverse]
 
-KPTools := module() 
+kptools := module() 
     option package; 
     #local Pmatrix, Contourintegrate,Pathintegral,Partintegral,integrate,integrand2,Acy,Permuted,Whereis,Putfirst,Analyticcontinuation, Continue, Der;
-    export waveConstants,waveConstantsFromDiffs,Ksol,KPgSol, Monodromy, Homology,  PeriodMatrix, checkWCError, HBF, getDC;    
-    global A1, C,p,q;
-    local getPermutation, getWaveConstants, getU, thetaDet, generateEquations,processEquations, computeThetaConst,
-    sortComplex,AnalyticContinuation,Monodromy_Processed,Linearmonodromy,Generalmonodromy,
-    ProcessPoly,ComputeBoundary, getParameters,
-    ProduceVoronoi, ProduceHurwitz,ProduceCycle,GenerateMonodromy,check_cstruct,Continue,Der,
-    Distsort, Canonicalbasis,Frobeniustransform,Intersectionmatrix,Putfirst,Whereis,Tretkofftable,
-    Findcycle, Listordered, Tretkofflist, Homologybasis, Makecycle, Smallest, Canbasis, Simplifycycle,
-    Compresscycle, Reformcycle,Pmatrix,Contourintegrate,Pathintegral,Partintegral,integrate,integrand2,Acy;
+    export sortLex,sortArg,RealKPSolLab,intAEdge, waveConstants,lineInt, fgParameters, RCV, Monodromy, Homology,  periodMatrix, checkWCError, HBF, getDC, KPgSol; 
+    local global_lvl := DEFAULT_GLOBAL_LVL, base_lvl := DEFAULT_BASE_LVL, ui_digits_origin := Digits, 
+        ui_digits_processed := max(Digits, 10),   ui_digits_high := 2 * ui_digits_processed, 
+        ui_digits_low := max(ui_digits_origin-3,7), s_coord, t_cord, global_abscissas_count := 0, matchUpAC, populateAbs, 
+        NewtonForRational, RCV2, inf_dist_between_pts := 1, base_point := NULL,  base_preimage:= NULL, num_problem_pts := 0, 
+        digits_lb := 10, plotter:={}, V:={},  E:={}, F:=table(), edgeData := table(), vertexData:=table(), pathData:=table(),
+        edgeSet:={}, problemPoints, singPoints, boundaryPoints, branchPoints, diffBasis,  genusoff, num_sheets,  Pmatrix,dxx,dxxx, 
+        intData, pathData, homBasis,edgeSet, 
+        #procedures
+        #Monodromy 
+        initialize1, mono1, initialization,processPoints, linearMonodromy, generalMonodromy,ABS,intAroundBpNTimes,
+        produceVoronoi, produceHurwitz, generateMonodromy, intersectionOfBLines,check_cstruct, 
+        colors:=["Blue","Orange","SkyBlue","CornflowerBlue","Coral","DarkBlue","Tomato","Cyan","DarkSalmon"],
+        #misc Comps
+        removeVerts,minStep:=1/2^BaseLvl,
+        getPermutation,permuteList,permuteFibs, wIsToRightOfz, nPtBoundary,maximalDistWRT,scrubToList,getSiteIndex,
+        isNormalForm, clearCanvas, toFloat,scrub,complexToPt,complexLToPtL, ptLToComplexL,constructEdge,
+        updatePlotter,intProcessing,lineIntersection,edgeProcessing,newtonY,DK,
+        reverseEdgeAC,  lvlUp,intAroundBp,extractFib, getPuedoSite,getSite,intBpNTimes,
+        getWaveConstants, getU, thetaDet, generateEquations,processEquations,
+        computeThetaConst, analyticContinuation ,aContEdgeInt,aContEdge,updateVal1,
+        processPoly, getParameters,intPrep,errorEstimate,intEdge,ContinueDK, Continue,Der,
+        Canonicalbasis,Frobeniustransform,Intersectionmatrix,Putfirst,Whereis,Tretkofftable,
+        Findcycle, Listordered, Tretkofflist, Homologybasis, Makecycle, Smallest, Canbasis, Simplifycycle,
+        Compresscycle, Reformcycle,Acy,periodMatrixInner,intAtLvL,
+        secondIntialization;
 
     
     
-    
-$include "Monodromy.mm"
-$include "AnalyticContinuation.mm"	
-$include "sortComplex.mm"
-$include "getPermutation.mm"
-$include "Homology.mm"
-$include "PeriodMatrix.mm"
-$include "KPSols.mm"
-$include "KPSolsTaylor.mm"
+$include "analyticContinuation.mm"	  
+$include "homology.mm" 
+$include "integrationtools.mm"
+$include "init.mm"		
+$include "KPLAB.mm" 
+$include "KPSolsMethod1.mm"
+$include "KPSolsMethod2.mm"
 $include "KPErrorTools.mm"
-	
+$include "monodromy.mm"
+$include "miscComputations.mm"
+$include "periodMatrix.mm"
+$include "polyTools.mm" 
+$include "RCV.mm" 
+
+initialize1()
+
+
 
 end module:
-#savelib( 'KPTools' );
+savelib( 'kptools' );

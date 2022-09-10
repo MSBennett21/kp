@@ -3,39 +3,33 @@
 
 
 
-Homology:=proc(curve,x::name,y::name)
+homology:=proc(curve,x::name,y::name)
 	description "Written by B. Deconinck with small modifications by M. van Hoeij";
 	option `Copyright (c) 1999 Waterloo Maple Inc. All rights reserved.`;
-	
-	if not assigned(_Env_GlobalOptions) then	
-		_Env_GlobalOptions:=[args[4..-1], 'secondary',s];
-	fi;
-	Canonicalbasis(args);
-	if not member('int',_Env_GlobalOptions) then
-        clearCanvas();  
-    fi; 
+	Canonicalbasis(Digits,args)
 end:
 
 # Given a plane representation of a Riemann surface, 
 # this procedure gives a canonical basis for the homology 
 # of the Riemann surface. 
 
-Canonicalbasis:=proc(curve,x,y)
-	local gg,hs2,i,j,ttable,tbasis,tmatrix,
+Canonicalbasis:=proc(DI,curve,x,y)
+	local g,hs2,i,j,ttable,tbasis,tmatrix,
 	      tlist,alpha,mon,c;
 	global C,p,q;
-	options  
+	options remember, 
 	    `Copyright (c) 1999 Waterloo Maple Inc. All rights reserved.`;
 		###ERROR CHECK
 	unassign('C','p','q');
 	
 	#Format simple case, get monodromy
+	g:=algcurves['genus'](curve,x,y);
+	if g=0 then return `The curve is rational. All cycles are homologous to zero` fi;
 	
-
+	
 	
 	# Compute the monodromy of the curve  = Hurwitz system.
 	mon:=Monodromy(args);
-	if g=0 and member('secondary',_Env_GlobalOptions) then return `The curve is rational. All cycles are homologous to zero` fi;
 	hs2:=nops(mon[2]);
 	#if hs2<>nops(GroupTheory['Orbit']('permgroup'(hs2,{seq(i[2],i=mon[3])}),1)) then
 	#	error "monodromy not transitive, so curve is reducible"
@@ -54,13 +48,10 @@ Canonicalbasis:=proc(curve,x,y)
 	c:=nops(tlist)/2;
 	tmatrix:=Intersectionmatrix(tlist,[seq(p[i],i=1..c),seq(q[i],i=1..c)]);
 	####
-	
+
 
 	#testing
 	if rank(tmatrix)/2 <> g then
-		print(rank(tmatrix)/2);
-		print(g);
-		clearCanvas();  
 		error "Found inconsistent genus"
 	fi;
 	alpha:=Frobeniustransform(tmatrix,g);
@@ -71,9 +62,7 @@ Canonicalbasis:=proc(curve,x,y)
 		inplace=false,outputoptions=[]);
 	for i to c do for j to c do if
 	  tmatrix[i,j]<> `if`(j=i+g and i<=g,1,`if`(i=j+g and j<=g,-1,0))
-		then 
-		clearCanvas();  
-		error "Frobeniustransform failed";
+		then error "Frobeniustransform failed"
 	fi od od;
 
 	#formating
@@ -724,22 +713,15 @@ end:
 # the canonical a and b cycles. 
 
 Canbasis:=proc(ttable,alpha)
-	local i,gg,can ,a,b;
+	local i,g,can ,a,b;
 	option `Copyright (c) 1999 Waterloo Maple Inc. All rights reserved.`;
-	gg:=rowdim(alpha)/2;
+	g:=rowdim(alpha)/2;
 	can:=table();
-	for i from 1 to 2*gg do
-		can[`if`(i>gg,b[i-gg],a[i])]:=Compresscycle(Simplifycycle(
-		 ttable,convert(row(alpha,i,outputoptions=[]),list)));
-		
+	for i from 1 to 2*g do
+		can[`if`(i>g,b[i-g],a[i])]:=Compresscycle(Simplifycycle(
+		 ttable,convert(row(alpha,i,outputoptions=[]),list)))
 	od;
-	#print(can[convert(a[1],name)]);
-	homBasis:=[seq(can[convert(a[i],name)],i=1..gg), seq(can[convert(b[i],name)],i=1..gg)];
-	if member( 'bugHom', _Env_GlobalOptions) then
-		print("Homology basis:");
-		print(homBasis);
-	fi;
-		op(can)
+	op(can)
 end:
 
 # This procedure simplifies a cycle which
@@ -901,7 +883,7 @@ Reformcycle:=proc(cycle)
 		fi;
 		pos1:=Whereis(b[2],a);
 		pos2:=Whereis(b[2],c);
-		mini:=min(abs(pos2,pos1),pos2-pos1+nops(b[2]),abs(pos2-pos1-nops(b[2])));
+		mini:=min(abs(pos2-pos1),pos2-pos1+nops(b[2]),abs(pos2-pos1-nops(b[2])));
 		if abs(pos2-pos1)=mini then around:=pos2-pos1;
 		elif pos2-pos1+nops(b[2])=mini then around:=pos2-pos1+nops(b[2]); 
 		else around:=pos2-pos1-nops(b[2]);

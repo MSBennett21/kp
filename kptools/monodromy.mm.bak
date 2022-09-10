@@ -1,0 +1,673 @@
+#fix center problem
+#clean up code
+# Do very quality test on Hurwitz
+
+Monodromy := proc(curve, x, y) 
+    #options remember;
+    local C,i;	
+	print(args);
+	if indets( evalf(curve),'name') minus {x,y}<>{} then	#if other symbols are used we got a problem	
+		error "Only 2 variables allowed"
+    #elif  not irreduc(curve) then 
+	#	error "curve is irreducible"
+	elif indets(curve,float)<>{} then #if its a float we got a problem	
+		error "No floating point coefficients allowed"
+	elif member(group,[args[4..-1]]) then  #if group is mentioned, return the permgroup
+		C:= procname(args[1..3],op(subs(group=NULL,[args[4..-1]])));
+		'permgroup'(nops(C[2]),{seq(i[2], i=C[3] )})
+	elif args[nargs] <> `give paths` then #if not give paths is mentioned get the paths we pass it back in and ommit the paths produced
+		C:=procname(args,`give paths`);
+		[C[1],C[2],C[3]];
+    else #otherw
+	    Digits := max( 10, Digits);
+        _Env_GlobalOptions:= ifelse( assigned(_Env_GlobalOptions), [ args[ 4..nargs ], op(_Env_GlobalOptions) ],[ args[ 4..nargs ]]); 
+        Monodromy_Processed( Digits, collect(curve,{x,y},`distributed`) ,x,y);   
+    fi
+end:
+
+Monodromy_Processed:=proc(DI,curve,x,y)
+	if degree(curve,y) = 0 then
+		error "curve is independent of the second variable"
+	elif degree(curve,x)=0 then
+		error "curve is independent of the first variable"
+	elif degree(curve,y)=1 then
+		Linearmonodromy(curve,x,y)
+	else 
+        if degree(curve, x)<3 then
+		    userinfo(1,'algcurves',
+		    `Consider switching the roles of the variables. The curve has degree <=2 in the first variable.`);
+	    fi;
+		Generalmonodromy(args[2..nargs])
+	fi;
+end:
+# This procedure gives the monodromy information of the Riemann surface
+# of a single-valued function.
+Linearmonodromy:=proc(curve,x,y)
+	option `Copyright (c) 1999 Waterloo Maple Inc. All rights reserved.`;
+	basePoint := 0;
+	while subs(x = basePoint, lcoeff( curve, y))=0 do
+		basePoint := basePoint - 1
+	od;
+    F:=curve;      
+	bpPreimage := [  scrub(polySolve(subs( x=basePoint, curve ), y )) ];
+	[basePoint,preimages,[]]
+end:
+
+Generalmonodromy:=proc(curve,x,y)
+local siteToCell:=table(), N, E:={};   
+
+    Digits := 2*Digits;
+    if member('bug', _Env_GlobalOptions ) then           
+        print("Monodromy called General Mono. Now processing polynomial");      
+    fi;
+	F := ProcessPoly( curve, x, y );    
+
+    problemPoints := 
+        [ op( { op(scrub(polySolve(  evalf(F[2]) , x ,preprocess=true))) ,  op(scrub(polySolve(  evalf(F[3]) , x, preprocess=true )))} ) ];
+    Digits:=Digits/2;
+    N := nops(problemPoints);
+    if N>1 then
+        infDist := min( mindist( map(a->[Re(a),Im(a)],problemPoints))[1]/2,1);    
+        if  infDist <= .1^(Digits-6) then error "increase digits: the problem points cannot be resolved" fi;
+        minDigits := ifelse( infDist<1, round(-log10(infDist))+1,1); 
+        Digits := Digits + minDigits;
+        if member('bug', _Env_GlobalOptions ) then
+            print(cat("The distance between sites is", convert(infDist, string)));
+            print(cat("The added digits are", convert(minDigits, string)));
+        fi;         
+    fi;
+    ComputeBoundary( problemPoints, N);
+    problemPoints := 
+        sortArg(problemPoints,-boundaryPoints["radius"]);
+    if member('bug', _Env_GlobalOptions ) then  
+            print(cat("there are ", convert(N, string), " problem points")); 
+
+    fi;   
+   
+    Digits := 2*Digits;
+    Dual := voronoiDual( complexToPt( [op(  problemPoints) , op(boundaryPoints["boundary"]) ] ) );  #should be no more than O(n^2) N  #use the digits that user specified
+    Digits := Digits/2;
+    problemPoints := Array( problemPoints ); 
+   
+    if member('bug', _Env_GlobalOptions ) then 
+        print("Constructing Edges");
+    fi;
+	E, siteToCell := ProduceVoronoi( Dual, N );
+    #data vertex bekongs to egdge, s belongs to cell, e belongs to site.
+    if member('bug', _Env_GlobalOptions ) then 
+        print("Edges constructed");        
+    fi;
+    basePoint := sortLex( [op(op~(E))])[1];    
+    bpPreimage :=  evalf[2*Digits](subs(x=basePoint, F[4]));    
+	problemPoints := sortArg( problemPoints,basePoint);
+
+	for s in problemPoints do
+        siteToCell[ s ] := [ siteToCell[ s ], ProduceCycle( siteToCell[ s ], s) ];                
+    od;     
+	siteToCell[ infinity ] := [ siteToCell[ infinity ], ProduceCycle( siteToCell[ infinity ], infinity) ];  
+	ProduceHurwitz( N, siteToCell,E ); 
+	ArrayTools[Append]( problemPoints, infinity );
+	
+	
+
+	
+	monoData := GenerateMonodromy(E, N);;
+	if member('showpaths', _Env_GlobalOptions ) or member('bug', _Env_GlobalOptions) then
+		print( plots[display]( plot( edgeFormat(E) , color ="red" ), 
+		plots[pointplot]( complexToPt(branchPoints),symbol=solidcircle, color = "black"),
+        plots[pointplot]( complexToPt(singPoints),symbol=solidcircle, color = "red"),
+        plots[pointplot]( complexToPt(boundaryPoints["boundary"]),symbol=circle,color = "red" ),
+        plots[pointplot]( complexToPt(basePoint),symbol=asterisk, color = "red"),axes=NORMAL,scaling=CONSTRAINED, 
+		title=typeset("Paths chosen for the analytic continuation of y(x)"), 	
+        labels=[Re, Im]) );
+	fi;
+    #can delete a lot here
+    #-don't need E, siteToEdges...
+	#print("generating mondromy");
+	return [basePoint, bpPreimage, convert(monoData, list)];
+end proc;
+#Input is curve output is f p,q,h
+#f =curve
+#p = curve that has roots of f that are problem points but not singular
+#q = curve that has roots of f that  singular pts
+#h = list of sheet cordinates ordered-it induces the order
+ProcessPoly := proc(curve, x, y)
+    local F1 := collect(primpart(curve,{x,y}),{x,y}, 'distributed', Normalizer), 
+    F2 := evala(normal( resultant(F1, diff(F1,y), y) )),
+    F3 := evala( normal( lcoeff(curve,y))),F4;      
+    F2 := evala( quo( F2 , gcd(F2,diff(F2,x) ),x));
+    F2 := collect(primpart(F2/lcoeff(F2,x), {x}),{x,y}, 'distributed', Normalizer);  
+   
+
+    if degree(F3,x) > 0 then
+       F3 := evala( quo( F3 , gcd(F3,diff(F3,x) ),x));
+    fi;
+    F2 := evala(quo(F2, gcd(F2,F3), x));
+   	if member('bugF',_Env_GlobalOptions ) then
+        print("The curve is processed into 4 algebraic curves"); print("The primary curve is");
+        print(F1);   print("The curve that contains the branch points is");  print(F2); 
+        print("The leading coeef of the original curve is");print(F3);
+    fi;
+    F4 := [ seq( RootOf( F1=0, y, index=i), i=1..degree(curve,y) ) ]; 
+   return [F1,F2,F3, F4];
+end proc:
+
+#computes boundary to ensure no rays. Cannot add artifical pts to interior:will ruin hurwitz
+ComputeBoundary := proc( ll::list, size::integer, scale:=2)
+   local center,k,r; 	
+	
+	center:=  scrub(( add( ll[k], k=1..size )/size), Digits-3);
+	r := scrub( scale * max( {  op( map( a -> abs(  a - center ), ll) ), 1 } ) ); 
+    boundaryPoints:=table();
+    boundaryPoints["radius"]:= r;
+    boundaryPoints["center"]:= center;
+    boundaryPoints["boundary"] :=  sortArg([  seq(scrub(
+        center + r * exp( (1/3*Pi*k+Pi/6)*I)  
+    ),k=1..6 ) ],-r);		
+    if member('bugB',_Env_GlobalOptions ) then
+        print("Boundary computed, with center"); print(center); print("and radius"); print(r);
+        print("The boundary points are");
+        print(plots[display]([plot({complexToPt([boundaryPoints["boundary"][1],boundaryPoints["boundary"][2]]),complexToPt([boundaryPoints["boundary"][2],boundaryPoints["boundary"][3]]),
+        complexToPt([boundaryPoints["boundary"][3],boundaryPoints["boundary"][4]]), complexToPt([boundaryPoints["boundary"][4],boundaryPoints["boundary"][5]]),complexToPt([boundaryPoints["boundary"][5],boundaryPoints["boundary"][6]]),
+        complexToPt([boundaryPoints["boundary"][6],boundaryPoints["boundary"][1]])}
+        , color="red"), 
+        plots[pointplot]( complexToPt({boundaryPoints["boundary"][1],boundaryPoints["boundary"][2], boundaryPoints["boundary"][3],boundaryPoints["boundary"][4],boundaryPoints["boundary"][5],boundaryPoints["boundary"][6]}))]));
+    fi;	
+end proc:
+
+#Do a better job getting verts here
+#Input: dualnay triangles: list of lists comprised of 3 integers and the integers rep the site indicies
+#sites
+#output: Edges
+# sites to pre cell, verts to edges, edges and sites associated to them --some of this is beyond ness but since we can expect num of sites to not get to large there is
+# more of a constraint on speed then on space and so we should worry less about space (i.e. extra objects).
+ProduceVoronoi := proc(triangleSet, size)
+    local triangleToVert:=[], triangleIndexi, triangleIndexj, triangleIndexk, sites, ci, plotComponent, DualPlot:=[],
+     mm,mm1,mm2, sameCenters, i, si, sj, pt1,pt2,Tj,trianglesij,recordsites:=table(),siteToTriangles := table(),E:={}, cellData:=table(); 
+    ########GET THE VERTICIES
+    if member('bug', _Env_GlobalOptions ) then
+        print("Voronoi dual computed");
+        #print(triangleSet);
+        #print("numberOfTriangles");
+        #print(nops(triangleSet));   
+          
+    fi;
+    if member('bugT', _Env_GlobalOptions ) then
+        print(cat("There are ", convert(nops(triangleSet),string), " triangles"));
+        print(triangleSet);      
+    fi;
+    for triangleIndexi from 1 to nops(triangleSet) do
+		Ti := triangleSet[triangleIndexi]; #get a triangle
+        sites:=[];        
+		for siteIndexi in Ti do #for each site in the triangle see if we allredy have it
+			sites := ifelse(
+                siteIndexi <=  size, 
+                [op(sites), problemPoints[siteIndexi] ],[op(sites), boundaryPoints["boundary"][ siteIndexi - size ]] );       
+            siteToTriangles[ siteIndexi ]:= 
+                ifelse(
+                    assigned(siteToTriangles[ siteIndexi ]), 
+                    siteToTriangles[ siteIndexi ] union { triangleIndexi }, { triangleIndexi });           
+	 	od;       
+        ci,plotComponent := getLine(op(sites)); 
+        if member('bugT', _Env_GlobalOptions ) then 
+            print(plots[display](plotComponent));
+        fi;
+        DualPlot:=[op(DualPlot), op(plotComponent)];
+       				
+        ci := scrub( Complex(op(ci)) );	
+        triangleToVert := [ op( triangleToVert ), ci  ];
+	od;
+    if member('bug', _Env_GlobalOptions ) then
+        print("vetricies are constructed, now determining distinct verts");       
+    fi;   
+ 
+    ########process centers of triangles  
+	triangleToVert := Array( triangleToVert ); #may be so many triangles that an array must be used   
+    
+    
+    mm1,sameCenters := processVerts( triangleToVert, nops(triangleSet));    
+    i:=1; 
+    mm := mindist(map(a->[Re(a),Im(a)],convert(mm1,list)))[1];
+    while  mm/2  <10^(-minDigits) do       
+        mm1, sameCenters := processVerts( triangleToVert,nops(triangleSet) ); 
+        mm := mindist(map(a->[Re(a),Im(a)],convert(mm1,list)))[1];
+        print(mm);
+        i:=i+1;   
+    od;       
+    
+    infDist := min( infDist,mm/2);    
+      
+    if member('bug', _Env_GlobalOptions ) then
+       print(cat("filtered vetricies ",convert(i, string)," times"));
+       print(cat("the closest a site can be to an edge is ",convert(infDist, string))); 
+       print(cat("and so the accuracy needed to resovle these points is",convert(minDigits , string)));  
+       DualPlot:=[op(DualPlot), plots[pointplot](complexToPt(convert(mm1,list)),symbol=asterisk, color = "red" )];
+       print(plots[display](DualPlot,title=typeset("The Dual")));    
+    fi;     
+    if  fnormal(infDist, Digits-4) <= 0 then error "increase digits: the verticies of the graph cannot be resolved" fi;
+    minDigits := ifelse( infDist<1, round(-log10(infDist))+1,1); 
+      
+    
+    Digits := Digits+ minDigits;
+    
+    ########construct edges
+    indexSet:={seq(i,i=1...nops(triangleSet))};#get all triangles
+    #print(indexSet);
+    while indexSet<> {} do #while there still are some        
+        i:= min(indexSet); #look at the tiangles associated to i        
+        for triangleIndexi in sameCenters[i] do 
+            Ti := triangleSet[triangleIndexi]; #for each one
+            pt1 := triangleToVert[triangleIndexi];  #get center
+            #print(Ti);
+           # print(({op(Ti)} intersect {seq(i,i=1.. size)}));
+            for siteIndexi in ({op(Ti)} intersect {seq(i,i=1.. size)}) do 
+                si := problemPoints[siteIndexi]; 
+                #print(siteIndexi);
+                #print(si);  
+                for siteIndexj in ({op(Ti)} minus {siteIndexi}) do #if it is look at the remaining ones                    
+                    sj:= ifelse( siteIndexj <= size,      
+                        problemPoints[siteIndexj], boundaryPoints["boundary"][siteIndexj-size]); #
+                   # print("sj");
+                    #print(sj);
+                    if not assigned(recordsites[[si,sj]]) then
+                        #print("edge recorded");
+                        recordsites[[si,sj]]:=[];
+                        trianglesij := (siteToTriangles[ siteIndexi ] intersect siteToTriangles[ siteIndexj ] intersect indexSet) minus { op(sameCenters[i]) }; 
+                        sj:= ifelse(siteIndexj <= size,      
+                                sj, infinity);
+                        if nops(trianglesij)>1 then
+                                error "Somehow two sites of a planar trianagulization are on three different triangles";
+                        elif nops(trianglesij)=1 then
+                              #  print("hi");
+                                Tj:=triangleSet[trianglesij[1]]; 
+                                pt2:=triangleToVert[trianglesij[1]]; 
+                                E := E union { { pt1, pt2} };
+                                vertexData[ pt1 ]["neighbors"]:= vertexData[ pt1 ]["neighbors"] union {pt2}; 
+                                vertexData[ pt2 ]["neighbors"]:= vertexData[ pt2 ]["neighbors"] union {pt1};    
+                                edgeData[  { pt1, pt2 }  ] := table();
+                                edgeData[  { pt1, pt2 }  ]["sites"] :={si,sj};                                         
+                                cellData[ si ]:= ifelse( assigned(cellData[ si ]),cellData[ si ] union {  {pt1, pt2}  }, {  {pt1, pt2}  } );
+                                cellData[ sj ] := ifelse(assigned(cellData[ sj]),cellData[ sj ] union {  {pt1, pt2}  },{  {pt1, pt2}  } );                                 
+                        fi;
+                    else
+                      #  print("edge not recorded");
+                    fi;
+                        
+                od;
+                
+            od;                
+            indexSet := indexSet minus {triangleIndexi};
+        od;		
+	od;
+    E,cellData;
+end proc:
+
+ProduceHurwitz := proc(size,cellData,E) ; 
+    local i,j, si, siData, crtPt, pstPt, nxtPt, p1, p2, p3, pt, neighbor, crtNeighbors, possibleNxtPts, directionVector,
+    sitesOfEdge, s1, s2, s, s1Index, s2Index, sIndex, s1Vector, sVector,mm, auxPlot:=[],crtEdges:=[], Ppoints:=[], Pedges:=[], 
+    v2IsToRightOfv1 := proc( v1, v2 )                
+        return evalb(evalf[2*Digits]( v1[1]*v2[2]- v1[2]*v2[1])< 0);
+    end proc;
+	edgePlot:=plot(edgeFormat(E),color="grey"), plots[pointplot]( complexToPt({basePoint}),symbol="asterisk", color="black");
+    for i from 1 to  size do #for each site in order
+        si := problemPoints[i];
+        siData :=  cellData[ si ];  
+        crtPt := basePoint;   #start from canonnical vertex
+        pstPt := basePoint;       
+        if member('bug', _Env_GlobalOptions ) then
+            print(cat("Path ",convert(i, string)," for site ",convert(si, string)));
+
+        fi;  
+        p1 := []; # we need to construct path p1p2p1^{-1} to cell, but we already have path on cell
+        p2 := Array(1..nops(siData[2]),siData[2]); 
+        edgePlot:=edgePlot,plot(complexToPt~({op(siData[2])}),color="black"), plots[pointplot](complexToPt({si}),symbol=solidcircle, color = "red" );    
+        #Wprint(p2);
+        while not ( crtPt in op~(siData[1]) ) do  #while we travel and are not on the cell
+            crtNeighbors :=   vertexData[crtPt]["neighbors"] minus { crtPt, pstPt }; #at crt location, get neighbors
+            possibleNxtPts := crtNeighbors;
+            
+            if member('bug', _Env_GlobalOptions ) then
+                crtEdges:=[];
+                for neighbor in crtNeighbors do
+                   crtEdges:=[op(crtEdges),[[Re(crtPt),Im(crtPt)],[Re(neighbor),Im(neighbor)] ]];
+                od;
+                auxPlot:= plot({op(crtEdges)},color="yellow");
+                print("Current state");
+                print(plots[display](edgePlot, auxPlot));    
+            fi;
+
+                            
+            for neighbor in crtNeighbors do #choose a neighbor               
+                directionVector := < scrub(Re(neighbor - crtPt)), scrub(Im(neighbor - crtPt)), 0 >; #get direction vector
+                sitesOfEdge := edgeData[ { crtPt, neighbor } ]["sites"]; # get the sites associated to the edge in question
+                #print(sitesOfEdge);
+                #use these sites to get an understanding of path
+                s1 := sitesOfEdge[1];
+                s2 := sitesOfEdge[2];
+               
+                if s1 <> infinity and s2 <> infinity then  
+                    if member('bugH', _Env_GlobalOptions ) then                    
+                        P:=[edgePlot,plot({[[Re(crtPt),Im(crtPt)],[Re(neighbor),Im(neighbor)] ]},color="yellow"), 
+                        plot(complexToPt~({op(p1),op(siData[2])}),color="black"),plots[pointplot](complexToPt({s1,s2}),symbol=solidcircle, color = "green" ),
+                        plots[pointplot](complexToPt({si}),symbol=solidcircle, color = "red" )];
+                        print(plots[display](P));    
+                    fi;  
+                    s1Vector := < scrub(Re(s1 - crtPt)),  scrub(Im(s1 - crtPt)), 0 >;
+                    s1Index := searchList( s1, convert( problemPoints , list));
+                    s2Index := searchList( s2,convert( problemPoints , list) );                     
+                    s1IsRight := v2IsToRightOfv1(directionVector,s1Vector);
+                    if s1Index < i and s2Index < i then #both sites old
+                        possibleNxtPts := possibleNxtPts minus {neighbor}; #old edge so we do not travel on it
+                        if member('bug', _Env_GlobalOptions ) then      
+                            print("the edge is old since both sites are already processed");
+                        fi; 
+                    elif s1Index > i and s2Index < i then #s1 is new, s2 old:s1 should be on the left
+                        if s1IsRight then #s1 new and to the right so cannot be the neighbor and actually we have a problem
+							error "failed to resolve points: found a new site on the wrong side of the edge";
+                        fi;
+                        if member('bug', _Env_GlobalOptions ) then      
+                            print("the edge is a possible edge as the new site is on the left");
+                        fi;  
+                    elif s1Index < i and s2Index > i then #s1 is old, s1 is new
+                        if not s1IsRight then # s1 should be on the right
+                            error "failed to resolve points: found a new site on the wrong side of the edge";
+                        fi; if member('bug', _Env_GlobalOptions ) then      
+                            print("the edge is a possible edge as the new site is on the left");
+                        fi;  
+                    else #s1,s2 are new so not neighbor            
+                        possibleNxtPts := possibleNxtPts minus {neighbor}; #future edge so removeif member('bug', _Env_GlobalOptions ) then      
+                        if member('bug', _Env_GlobalOptions ) then      
+                            print("the edge is to be used later as both sites are new");
+                        fi;
+                    fi;
+                else #we are on the boundary
+                    s := ifelse(s1<>infinity, s1, s2);	
+                    sVector := <scrub(Re(s - crtPt)),  scrub(Im(s - crtPt)), 0>;	    
+                    if member('bugH', _Env_GlobalOptions ) then                    
+                        P:=[edgePlot,plot({[[Re(crtPt),Im(crtPt)],[Re(neighbor),Im(neighbor)] ]},color="yellow"), 
+                        plot(complexToPt~({op(p1),op(siData[2])}),color="black"),plots[pointplot](complexToPt({s}),symbol=solidcircle, color = "green" ),
+                        plots[pointplot](complexToPt({si}),symbol=solidcircle, color = "red" )];
+                        print(plots[display](P));    
+                    fi; 
+                    sIndex := searchList( s, convert( problemPoints , list));
+                    s1IsRight := v2IsToRightOfv1(directionVector,sVector);
+                    if s1IsRight then #site is to the right and new 
+
+                        if sIndex > i then # have |new site, this is legal and may be used later but not now
+                            possibleNxtPts := possibleNxtPts minus {neighbor}; 
+                            if member('bugH', _Env_GlobalOptions ) then      
+                            print("the edge is an edge for later as the new site is on the right");
+                            fi;  
+                        else
+                            if member('bugH', _Env_GlobalOptions ) then      
+                            print("the edge is a possible edge since the old site on the right");
+                            fi; 
+                        fi;
+                         # have |old site, this must be the path of interest
+                    else #site is to the left
+                        if sIndex < i then #old| is legal and are already used
+                            possibleNxtPts := possibleNxtPts minus {neighbor}; #old edge
+                            if member('bugH', _Env_GlobalOptions ) then      
+                                print("the edge is old as the site is old and to the left");
+                            fi;  
+                        fi; 
+                        if sIndex>i then 
+                            if member('bugH', _Env_GlobalOptions ) then      
+                                print("the edge is a possible edge as the new site is on the left");
+                            fi;  
+                        fi;
+                         #new| is legal and must be the path of interest
+                    fi;
+                fi;                  
+            od;
+            #Removed all nieghbors that do not belong, theoretical there should only be one.NEEDS PROOF 
+            if nops(possibleNxtPts)=1 then
+
+                nxtPt :=possibleNxtPts[1];          
+            else
+               print("error: somehow we ended with more than one possible pt");
+               nxtPt :=possibleNxtPts[1];                   
+               print("deterimining neighbor");
+               print(possibleNxtPts);
+                mm:=abs(nxtPt-si);
+                for pt in (possibleNxtPts minus {nxtPt}) do
+                    if evalf(mm-abs(pt-si)) >0. then
+                        nxtPt:=pt;
+                        mm:=abs(nxtPt-si);
+                    fi
+                od;       
+            fi;         
+            p1 := [ op(p1) , [ crtPt , nxtPt]];
+            edgePlot:=edgePlot, plot(complexToPt~([ crtPt , nxtPt]),color="black");
+            pstPt := crtPt;
+            crtPt := nxtPt;
+        od; #at this point we have all of the paths needed. We need to glue them together
+            
+           
+        while not ( p2[1][1] = crtPt and  p2[-1][2] = crtPt ) do
+            mm := p2[1];
+            for j from 1 to ArrayNumElems(p2)-1 do  
+                p2[j]:=p2[j+1];
+            od;
+            p2[-1]:=mm;
+        od;
+        p2:= convert(p2, list);
+        p3 := reverseList(map(reverseList,p1));         
+            
+           
+        pathData[si] := Array( 1..nops([ op(p1), op(p2), op(p3)]), [op(p1), op(p2), op(p3)] );  
+                  
+    od;
+    pathData[infinity] := Array(1..nops(cellData[ infinity ][2]),cellData[ infinity ][2]);
+	if member('bug', _Env_GlobalOptions ) then 
+        print("Path of site Infitity");
+        print(plots[display](plot(edgeFormat(E),color="grey"), plot(complexToPt~(pathData[infinity]),color="black"), 
+        plots[pointplot]( complexToPt({basePoint,pathData[infinity][1][2]}),symbol="asterisk", color="black")));
+    fi;
+end proc;  
+
+         
+
+
+
+
+ProduceCycle := proc( cycleSet::set, site )
+    local undirectedCycle := cycleSet, directedCycle:=[], crtPt,nxtPt,possibleEdges, natPt,prevPt;
+        
+		natPt := ifelse( site <> infinity, sortLex( [op(op~(undirectedCycle))] )[1],basePoint); #lex ordering is important for our algorithm	
+		#this produces a canonical point of the cell
+		possibleEdges:=(op~(undirectedCycle) intersect vertexData[natPt]["neighbors"]); #all edges that are in this cell that have the canonnical point
+		#print(possibleEdges);
+		nxtPt:= ifelse(site <> infinity, 
+			sortArg( 
+			[op(possibleEdges minus {natPt})],
+			natPt)[1],
+			sortArg( 
+			[op(possibleEdges minus {natPt})],
+			natPt)[-1]);
+        
+		directedCycle:=[ op(directedCycle), [natPt,nxtPt] ];#add this edge
+		prevPt:=natPt; #update location since we have moved
+		crtPt:=natPt;
+		#if member('bug', _Env_GlobalOptions ) then      
+        #    ArrayTools[Append]([p1,crt and past, crt and all neighbors plots[pointplot](complexToPt(mm),symbol=asterisk, color = "red" )]);
+        #    print(plots[display](edgePlot));    
+        #    fi; 
+		while nxtPt <>  natPt do #just take next edge untill we reach the next edge
+			prevPt:=crtPt;
+			crtPt:=nxtPt;
+			nxtPt:=	op( (vertexData[crtPt]["neighbors"] intersect op~(undirectedCycle)) minus {crtPt,prevPt});		
+			directedCycle:=[ op(directedCycle), [crtPt,nxtPt] ];
+		od;
+		
+		
+		directedCycle;
+
+
+end proc;
+
+GenerateMonodromy := proc(E,size)
+    local CL:= round( sqrt(max(1,  Digits-8))), edgeSet:=E,
+	i, j, k,l, pt1,pt2,fibre, integers, yi,yj,yk,sigma_inf,sigma,
+	siteToGenerator:=Array([]),siteToMonoData:=Array([]),mm,val,
+	pathNumber,fibre1,fibre2,fibre2perm, edges:={};   
+    #analtic continuation against edges is completed, now I need to take the paths, and these analytic continuation data to determine perm.
+    
+  
+        for e in E do  
+			pt1 := e[1];           
+            pt2 := e[2];                     
+            fibre1:= evalf(subs(x=pt1, F[4]));
+            continuationData :=[0,fibre1], Continue(CL, F[1],x,y,pt1*(1-t)+t*pt2,t,0,1, fibre1);
+            fibre2:= continuationData[-1][2]; #get the fiber, obtained by traveling to next point        
+            permData := Perm(getPermutation( evalf(subs(x=pt2, F[4])), fibre2));                
+            edgeData[{pt1,pt2}][[pt1,pt2]]:=[[continuationData], permData];  				
+            edgeData[{pt1,pt2}][[pt2, pt1]]:=[map(a->[1-a[1],a[2]],reverseList([continuationData])), pInv(permData)];             
+        od;
+    singPoints:=Array([]);   
+    branchPoints:=Array([]);   
+    for pathNumber from 1 to size + 1 do  #for each path       
+        ArrayTools[Append](siteToGenerator, Perm([]));  
+        for e in pathData[problemPoints[pathNumber]] do
+            siteToGenerator[pathNumber]:=pProd(edgeData[{e[1],e[2]}][e][2], siteToGenerator[pathNumber]);
+        od;
+        
+        if siteToGenerator[pathNumber] <> Perm([]) then
+        	    ArrayTools[Append](siteToMonoData,[ problemPoints[pathNumber],  convert(siteToGenerator[pathNumber], 'disjcyc') ] );       
+                ArrayTools[Append](branchPoints,problemPoints[pathNumber] );
+        else
+			ArrayTools[Append](singPoints,problemPoints[pathNumber] );
+            indexBP:=[op(indexBP),pathNumber];
+        fi;  
+    od;
+        if member('bugM',_Env_GlobalOptions) then
+         
+            for pathNumber from 1 to size + 1 do
+                edges:={};
+                print(pathData[problemPoints[pathNumber]]);
+                for e in pathData[problemPoints[pathNumber]] do                      
+                    auxPlot:=plot(edgeFormat(E),color="grey");  
+                    edges := edges union {complexToPt~(e)} ;                             
+                    print( edgeData[{e[1],e[2]}][e][2]); 		
+                od;
+                print("site val");
+                print(siteToGenerator[pathNumber]);
+                print(plots[display](auxPlot, plot(edges,color="black")));
+            od;
+            for pathNumber from 1 to size + 1 do
+                for e in pathData[problemPoints[pathNumber]] do                            
+                    print( edgeData[{e[1],e[2]}][e]); 
+                    print("inverse");
+                    print( edgeData[{e[1],e[2]}][[e[2],e[1]]]);		
+                od;
+            od;
+        fi;
+
+    
+
+    #for s in singPoints do
+    #    searchList( s, convert( branchPoints , list));
+    #    ArrayTools[Remove](branchPoints, searchList( s, convert( branchPoints , list))); 
+    #od;
+    sigma_inf:=Perm([]);
+    for i from 1 to nops(convert(siteToGenerator,list)) do
+        sigma_inf:=pProd(sigma_inf, siteToGenerator[i]);
+    od;    
+	if sigma_inf <> Perm([]) then
+    #    error "the product of the monodromy generators is not the identity";
+    fi;
+	check_cstruct(siteToGenerator[-1] ,algcurves[puiseux](F[1],x=infinity,y,`cycle structure`));
+    #fi;
+	#print(infBp);
+    siteToMonoData;       
+end proc:
+check_cstruct:=proc(perm,s)
+	local a;
+	a:=map(nops,convert(perm,'disjcyc'));   
+		if sort([1$(convert(s,`+`)-convert(a,`+`)),op(a)])<>sort(s) then
+			error "Found wrong cycle structure"
+		fi
+end:
+
+
+getLine:=proc(si,sj,sk)
+    local  center,deltaij,deltaik,deltakj,midij,midik,midjk,eq1,eq2,eq3,c1,c2,c3,P:=[];
+    Digits:= 2*Digits;
+    
+    deltaij:=(si-sj);
+    deltaik:=(si-sk);
+    deltajk:=(sj-sk);    
+    midij:=(si+sj)/2;
+    midik:=(si+sk)/2;
+    midjk:=(sj+sk)/2;
+    
+    eq1 := -Im(deltaij)*y-Re(deltaij)*(x-Re(midij))+Im(deltaij)*Im(midij);
+    eq2 := -Im(deltaik)*y-Re(deltaik)*(x-Re(midik))+Im(deltaik)*Im(midik);
+    eq3 := -Im(deltajk)*y-Re(deltajk)*(x-Re(midjk))+Im(deltajk)*Im(midjk); 
+    
+    c1 := op(solve([eq1,eq2],[x,y]));
+    c2 := op(solve([eq1,eq3],[x,y]));
+    c3 := op(solve([eq3,eq2],[x,y]));
+    c1 := 
+        [rhs(c1[1]),rhs(c1[2])];
+    c2 := 
+        [rhs(c2[1]),rhs(c2[2])];
+    c3 := 
+        [rhs(c3[1]),rhs(c3[2])];
+    center:=[
+        scrub((c1[1]+c2[1]+c3[1])/3),
+        scrub((c1[2]+c2[2]+c3[2])/3)
+    ];
+         
+    if member('bug', _Env_GlobalOptions ) then
+
+        P:= [plot({complexToPt([si,sj]),complexToPt([sj, sk]),complexToPt([sk,si])}, color="red"), 
+                plots[pointplot]( complexToPt({si,sj,sk}),symbol=solidcircle, color = "black" )];                 
+    fi; 
+   
+  
+    return center,P;
+end proc;
+
+processVerts := proc(verts, size)
+local i,indexSet := { seq(i, i = 1..size) },sameCenters:=table(), j,k,m, ci,cj, distinctVerts:=[], center;	
+    
+    while indexSet <> {} do #while we still have triangles
+		i := min(indexSet); #choose the smallest		
+        ci := verts[i]; # get the center of the triangle: the vert for the edge  
+        sameCenters[i]:=[i];
+        if member('bugT', _Env_GlobalOptions ) then       
+            print("triangle index is");
+            print(i);
+            print(" and has center");
+            print(ci);
+            print("current partition");
+        fi;     
+        indexSet := indexSet minus {i};
+		for j in indexSet do #go through the remaining edges and log the one center that is closest
+			cj := verts[j];            
+			m := scrub( abs( ci-cj )   );                
+            if m/2 < .1^(minDigits) then 
+                sameCenters[i]:=[op(sameCenters[i]),j];                    
+                if member('bugT',_Env_GlobalOptions ) then                    
+                    print("adding");
+                    print(j);                                          
+                fi;                 
+            fi;                        
+        od;        
+        indexSet := indexSet minus { op(sameCenters[i]) } ; 
+        if member('bugT',_Env_GlobalOptions ) then 
+            print("These triangles have the same center");
+            print(sameCenters[i]);            
+        fi;
+        center := scrub( add( verts[ sameCenters[i][k] ], k=1..nops(sameCenters[i]))/nops(sameCenters[i]), Digits+EXTRA1);
+        distinctVerts :=[op(distinctVerts),center]; 
+        vertexData[ center ]:=table();
+        vertexData[ center ]["neighbors"]:={};           
+        for k in sameCenters[i] do
+            verts[k] := center;               
+        od;         
+	od; 
+        return distinctVerts, sameCenters;
+    end proc;
+    

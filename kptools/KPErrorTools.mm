@@ -26,6 +26,46 @@ checkWCError := proc( RM::Matrix, U::list, V::list, W::list, d::complexcons, c :
     fi;
     mm;    
 end proc;
+
+errorEstimate:=proc(e,sGrid,R)
+    local Ne:=(nops(sGrid)-1)/2, AC:=R,i,j,k,x0,xs, yVec,h,sVals;	
+	xs:=edgeData[e]["path"];
+    h:=1/2^edgeData[e]["lvl"];
+    edgeData[e]["Error"]:=<seq(0,k=1..numSheets)>;
+    for i from 1 to 2*Ne+1 do #i=1-> -Ne i=N+1 0  i-N-1     
+        x0:=subs(s=sGrid[i],xs);
+        for j from 1 to nops(AC) do
+            if scrub(UI_Digits,evalf(sGrid[i]-AC[j][1]))=0. then
+                yVec:=AC[j][2];
+                edgeData[e]["Error"]:=edgeData[e]["Error"]+
+                    <seq(
+                        evalf(subs(
+                        x=x0,y=yVec[k], t=(i-Ne-1)*h,
+                        gam=edgeData[e]["gam"],
+                        intPrimitives["Ftt"])),                        
+                    k=1..numSheets)>;
+                break;
+            fi;
+	    od;
+    od;
+    Digits:=UI_Digits+2*EXTRA1;
+    edgeData[e]["Error"]:= h^3/(2*Pi)* max(abs~(evalf~(
+                        convert(edgeData[e]["Error"],list)
+                    ))) ;
+    print(edgeData[e]["Error"]);
+    print(edgeData[e]["lvl"]);
+	if edgeData[e]["Error"]> 10^(-UI_Digits+1) then
+            if edgeData[e]["lvl"]< intPrimitives["Glvl"] then
+                sVals:=intPrep(e);
+                return [edgeData[e]["Error"],sVals];
+            else
+                error "increase digits or increase integration level"
+            fi;	
+	else
+        return [edgeData[e]["Error"],[]];
+    fi;
+    
+end proc;
 HBF := proc(x,y,t, RM::Matrix, U::list, V::list, W::list, d::complexcons, c:=0, DI:=2 )
     local argument := convert( evalf(<op(U)> * x + <op(V)> * y + <op(W)> * t), list),
     Theta, ThetaX, ThetaT, ThetaY, 

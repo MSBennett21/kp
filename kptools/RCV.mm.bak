@@ -1,0 +1,208 @@
+###Description
+###INPUT
+###OUTPUT
+#this assumes that 2pi I is already pulled out of the vecr
+#tdo
+#-add user level printing
+#RVC is hardest to compute and needs
+# RM <- period natrix
+#Differential and all of the possible zeros <- period matrix
+#a place user gives infor f,x,y,P,D optional
+
+
+#compute RCV first and pass on differentials and matricies (posibly as env vars)
+#compute the the U, V, W associated to P. 
+
+#P_o would be good env variable
+#PM would be good env variable
+#RM would be good env variable
+#g would be good env var
+#diffs would be good env var
+#the left point of the monodromy <- period matrix
+#a g-1 devisor
+
+RCV := proc(f,x,y,omega,RM,P_0)    
+    local i,ii,j, mm, mdrmy, PM, omegaSet, A, B, g;
+ 
+    g :=  rank(RM);
+    
+    #pass over sheet order from monodromy
+    
+    p := numer(omega);
+    q := denom( omega);
+    Rp := resultant(f, p, y);
+    Rq := resultant(f, q, y);   
+    possiblePts:=[ infinity, op( polySolve(Rp,x)), op(polySolve(Rq,x)) ];
+    
+    N:=0;
+    AbelCannon:=0;
+    for possibleX in possiblePts do
+        possiblePt := algcurves[puiseux](f,x=convert(possibleX, rational),y,0,t);
+        for P_t in possiblePts do 
+            RofPoft:=normal(evalf(subs( op(P_t), p/q * diff(rhs(P_t[1]),t))));               
+            degX := degree(convert(series( 'leadterm'(RofPoft),t=0),polynom));      
+            if  degX <> 0 and degX <> -infinity and degX <> FAIL then
+                N:=N+degX;
+                AbelCannon := AbelCannon 
+                    +  degX*algcurves[AbelMap](f,x,y,P_0,RofPoft, t, Digits);
+            fi;
+        od;  
+    od;
+    AbelCannon:=AbelCannon/2;
+    tempVal21 := getSubObjects( [ seq(i, i=1..g) ] )[ 2..-1 ];
+    Ig:=Id(g);
+    HalfNs := [ Vector( g ), seq( add( col( Ig/2, tempVal21[i][k] ), k = 1 .. nops(tempVal21[i])), i = 1 .. nops(tempVal21) ) ];  
+    HalfMs := [ prod(RM,Vector( g )),
+    prod( RM, seq( add( col( Ig/2, tempVal21[i][k] ), k = 1 .. nops(tempVal21[i])), i = 1 .. nops(tempVal21) )) 
+    ]; 
+    halfVectors :={ };
+    for vec in halfNs do 
+        halfVectors := halfVectors union { seq( vec + HalfMs[i], i=1..nops(HalfMs))};
+    od;
+
+    #Ps:=[seq(mdrmy[1]-i), i=1..(g-1))];
+    print(nops(halfVectors));
+
+    while DI <> Digits do
+        halfVectors:=fpass1(RM,<op(APC)>, halfVectors, DI);
+        #halfVectors:=fpass2(RM, halfVectors, DI);
+        #halfVectors:=fpass3(RM, halfVectors, DI);
+        if nops(halfVectors)=1 then
+            break;
+        fi;
+        DI:=DI+2;
+    od;
+    h:=halfVectors[1];
+
+    KP_0:= h-<op(APC)>;
+    KP:=KP_0+(g-1)*algcurves[AbelMap](f,x,y,P_0,P, t, Digits+10);
+   
+    return KP;  
+        
+end proc;
+fpass1 := proc(RMatrix,vec, J, DI)   
+    JList:=J;
+    for j in J do
+        mm:=RiemannTheta(convert(j-vec,list),RMatrix,[],.1^DI);
+        if fnormal(evalf(mm)) <> 0 then
+            JList := JList minus { j };
+        fi;
+    od;
+    return JList;        
+end proc;
+(*   temp:= solve(f=0,[y]); #better to get this from Pmatrix
+    ySheets:=[];
+    for i from 1 to nops(mdrmy[2]) do
+        mm:=1;
+        ii:= -1;
+        for j from 1 to nops(temp) do
+            if evalf(abs(subs(x=P_0[1], rhs(temp[j]))-mdrmy[2][i])) < mm then
+                mm:= evalf(abs(subs(x=P_0[1], rhs(temp[j]))-mdrmy[2][i])) ;
+                ii:= j;
+            fi;
+        od;
+        ySheets:=[op(ySheets),temp[j]]
+    od;
+    mm := evalf( abs( subs(x=P[1], rhs(op( ySheets[1])) ) - P[2]) );
+    sheetIndex:=-1;        
+    for i from 1 to nops(ySheets) do
+        if evalf(abs( subs(x=P[1], rhs(op( ySheets[i])) ) - P[2])) <= mm then
+            sheetIndex := i;
+            mm:= evalf(abs( subs(x=P[1], rhs(op( ySheets[i])) ) - P[2]));
+        fi;       
+    od; 
+         
+    omegaSetLocal := subs( op( ySheets[sheetIndex] ), omegaSet);
+
+
+
+
+
+
+
+    dxxx := [ seq(diff(dxx[i], x),i = 1..g ) ];
+    dxxxx := [ seq(diff(dxx[i], x,x),i = 1..g )];
+    utilde := -subs(x = P[1], dxx);
+    vtilde := -subs(x = P[1], dxxx);
+    wtilde := -subs(x = P[1], dxxxx)/2;        
+    U := convert(simplify(fnormal(evalf(prod(inv(A), <op(utilde)>))),zero), list);
+    V := convert(simplify(fnormal(evalf(prod(inv(A), <op(vtilde)>))),zero), list);
+    W := convert(simplify(fnormal(evalf(prod(inv(A), <op(wtilde)>))),zero), list); 
+    
+    bps:={seq(mon1[3][i][1],i=1..nops(mon1[3]))};
+    abe:=[seq(0,i=1..g)];
+    if member('bug',{args}) then
+        print("monodromy");
+        print(mon1);
+        print("canonical pt");
+        print(P_0);
+        print("branchpoints");
+        print(bps);        
+    fi;  
+    for omegai in dx1 do
+        p := subs( dx=1,numer(  omegai) );
+        q := subs( dx=1, denom( omegai) );
+        print(p);
+        print(q);
+        Rp := resultant(f, p, y);
+        Rq := resultant(f, q, y);   
+        possiblePts:={ op(bps), infinity, op( SolveTools[Polynomial](Rp,x)), op(SolveTools[Polynomial](Rq,x)) };
+        if member('bug',{args}) then
+            print("differential");
+            print(omegai);
+            print("possible places in divisor");
+            print(possiblePts);      
+        fi;  
+        places:=[];
+        for possibleX in possiblePts do
+            possiblePt := op(algcurves[puiseux](f,x=possibleX,y,0,t));
+            print(possiblePt);
+            print(subs( op(possiblePt), p/q*diff(rhs(possiblePt[1]),t)));
+            degX := degree( subs( op(possiblePt), p/q*diff(rhs(possiblePt[1]),t)));
+
+            print(degX);
+            if  degX <> 0 and degX <> -infinity and degX <> FAIL then
+                ys:= solve( subs( x=possibleX,f),[y]);
+                print(ys);
+                places := [op(places),possiblePt] ;
+                abe[1] :=  degX*algcurves[AbelMap](f,x,y,op(P_0),possiblePt, t, Digits);
+            fi;
+            if member('bug',{args}) then
+                print("possible pt");
+                print(possiblePt);
+                print("degree of differential");
+                print(degX);                
+                print("record of places");
+                print(places);  
+                print("aMapValues");
+                print(abe);  
+            fi;  
+        od;
+        abe[i]:=abe[i]/2;
+        break;
+    od;
+    if member('bug',{args}) then
+        print("vals from vaveconst");
+        print(PM, A, B, RM, U, V, W);
+    fi; 
+    
+    mm:=100;
+    for N in HalfNs do
+        for M in HalfMs do
+            h:=N+M;
+            K:=convert(h-<op(A[1])>,list);
+            mm1:= evalf( abs(RiemannTheta(K,RM,[])));
+            if mm1<=mm then
+                mm:=mm1;
+                RCV:=K;
+              if member('bug',{args}) then
+                print("decrease in theta");
+                print(mm);
+                print("Rvec");
+                print(RCV);               
+                
+            fi;  
+            fi;           
+        od;
+    od;     *)
+    
